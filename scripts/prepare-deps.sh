@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Клонирует репозитории reconcile-kit в build/deps (для go.work и образа state-manager).
 #
-# FRAMEWORK_REF — по умолчанию: ветка, тег, SHA, или каталог с исходниками (см. ниже).
-# Переопределения: API_REF, CONTROLLOOP_REF, STATE_MANAGER_PROVIDER_REF,
+# Для каждого репозитория: API_REF, CONTROLLOOP_REF, STATE_MANAGER_PROVIDER_REF,
 # REDIS_INFORMER_PROVIDER_REF, RUNTIME_MANAGER_REF, STATE_MANAGER_REF.
+# Если переменная не задана, для этого репо используется ветка main.
 #
 # Режимы значения ref:
 #   • pr/<N>     — GitHub Pull Request (refs/pull/N/head)
@@ -15,12 +15,11 @@
 #
 # Примеры:
 #   API_REF=$HOME/src/api ./scripts/prepare-deps.sh
-#   API_REF=./vendor/reconcile-api FRAMEWORK_REF=main ./scripts/prepare-deps.sh
-#   FRAMEWORK_REF=main STATE_MANAGER_REF=pr/42 ./scripts/prepare-deps.sh
+#   API_REF=./vendor/reconcile-api ./scripts/prepare-deps.sh
+#   STATE_MANAGER_REF=pr/42 ./scripts/prepare-deps.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPS="${ROOT}/build/deps"
-FRAMEWORK_REF="${FRAMEWORK_REF:-main}"
 mkdir -p "${DEPS}"
 
 ref_for_repo() {
@@ -37,7 +36,7 @@ ref_for_repo() {
 	if [[ -n "${override}" ]]; then
 		echo "${override}"
 	else
-		echo "${FRAMEWORK_REF}"
+		echo "main"
 	fi
 }
 
@@ -154,4 +153,4 @@ for repo in api controlloop state-manager-provider redis-informer-provider runti
 	clone_one "${repo}"
 done
 
-echo "prepare-deps: ok -> ${DEPS} (FRAMEWORK_REF=${FRAMEWORK_REF})"
+echo "prepare-deps: ok -> ${DEPS}"
