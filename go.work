@@ -1,0 +1,14 @@
+// Workspace: e2e, тестовый оператор и локальные клоны reconcile-kit в build/deps.
+// Сначала выполните: make prepare-deps (каталоги build/deps/* должны существовать).
+
+go 1.24.2
+
+use (
+	./build/deps/api
+	./build/deps/controlloop
+	./build/deps/redis-informer-provider
+	./build/deps/runtime-manager
+	./build/deps/state-manager-provider
+	./e2e
+	./fixtures/e2e-operator
+)
