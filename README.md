@@ -6,7 +6,9 @@
 
 Скрипт `scripts/prepare-deps.sh` подтягивает репозитории reconcile-kit в `build/deps/`. Для каждого репо можно задать свою переменную (`API_REF`, `CONTROLLOOP_REF`, `STATE_MANAGER_PROVIDER_REF`, `REDIS_INFORMER_PROVIDER_REF`, `RUNTIME_MANAGER_REF`, `STATE_MANAGER_REF`).
 
-**Если не задать ни одной `*_REF`** (просто `make e2e`), для **всех шести** репозиториев используется ветка **`main`**: клоны/чекаут с GitHub `reconcile-kit/<repo>` на `main`.
+**Если не задать ни одной `*_REF`** (просто `make e2e`), для **всех шести** репозиториев используется ветка **`main`**: клоны с GitHub `reconcile-kit/<repo>`.
+
+**Повторный запуск** при уже существующем `build/deps/<repo>`: для **веток** делается `fetch` и выравнивание на актуальный `origin/<ветка>` (в том числе если `main` ушёл вперёд). Для **SHA** при shallow-клоне при необходимости выполняется `unshallow` / `deepen` и повторный `fetch`, чтобы нужный коммит стал доступен.
 
 ### Примеры запуска `make e2e`
 

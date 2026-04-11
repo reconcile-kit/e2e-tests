@@ -13,6 +13,10 @@
 #
 # Локальный путь не трогаем git-командами (только симлинк в build/deps/<repo>).
 #
+# Повторный запуск при уже существующем клоне: для веток (main и т.д.) — fetch и
+# reset --hard на origin/<ветка>, чтобы подтянуть сдвинувшийся tip. Для SHA при
+# shallow-клоне при неудаче checkout — deepen/unshallow и повторный fetch.
+#
 # Примеры:
 #   API_REF=$HOME/src/api ./scripts/prepare-deps.sh
 #   API_REF=./vendor/reconcile-api ./scripts/prepare-deps.sh
@@ -97,6 +101,30 @@ link_local_module() {
 	echo "prepare-deps: ${name} (local -> ${abs})"
 }
 
+# Обновить уже существующий git-клон под ref (ветка / тег / SHA).
+sync_existing_git_clone() {
+	local target="$1"
+	local ref="$2"
+	echo "prepare-deps: $(basename "${target}") (existing -> ${ref})"
+	if ! git -C "${target}" fetch --depth 1 origin "${ref}" 2>/dev/null; then
+		git -C "${target}" fetch origin "${ref}" 2>/dev/null || git -C "${target}" fetch origin 2>/dev/null || true
+	fi
+	if git -C "${target}" rev-parse --verify "origin/${ref}" >/dev/null 2>&1; then
+		git -C "${target}" checkout -q -B "${ref}" "origin/${ref}"
+		git -C "${target}" reset --hard "origin/${ref}"
+		return 0
+	fi
+	if git -C "${target}" checkout -q "${ref}" 2>/dev/null; then
+		return 0
+	fi
+	# shallow: нужный коммит может быть вне текущей глубины
+	if [[ "$(git -C "${target}" rev-parse --is-shallow-repository 2>/dev/null)" == "true" ]]; then
+		git -C "${target}" fetch --unshallow 2>/dev/null || git -C "${target}" fetch --deepen 50 2>/dev/null || true
+		git -C "${target}" fetch origin "${ref}" 2>/dev/null || git -C "${target}" fetch origin 2>/dev/null || true
+	fi
+	git -C "${target}" checkout -q "${ref}" 2>/dev/null || git -C "${target}" checkout -q FETCH_HEAD
+}
+
 clone_one() {
 	local name="$1"
 	local ref
@@ -137,9 +165,7 @@ clone_one() {
 	fi
 
 	if [[ -d "${target}/.git" ]]; then
-		echo "prepare-deps: ${name} (existing -> ${ref})"
-		git -C "${target}" fetch --depth 1 origin "${ref}" 2>/dev/null || true
-		git -C "${target}" checkout -q "${ref}" 2>/dev/null || git -C "${target}" checkout -q FETCH_HEAD
+		sync_existing_git_clone "${target}" "${ref}"
 		return
 	fi
 	echo "prepare-deps: ${name} @ ${ref}"
