@@ -16,6 +16,20 @@ const (
 	authDisabledSubject = "e2e-disabled" // binding выключен
 )
 
+// authEnabled — state-manager запущен с авторизацией (фаза auth в scripts/e2e.sh).
+func authEnabled() bool {
+	return os.Getenv("E2E_AUTH") != ""
+}
+
+// skipIfNoAuth — тесты, которым нужна авторизация, выполняются только в фазе auth.
+func skipIfNoAuth(t *testing.T) {
+	t.Helper()
+	skipIfNoEnv(t)
+	if !authEnabled() {
+		t.Skip("authorization is disabled (E2E_AUTH is not set)")
+	}
+}
+
 // tokenOpts — содержимое тестового JWT. Permissions == nil — claim не добавляется
 // (права берутся из БД), пустой срез — claim есть, но пустой.
 type tokenOpts struct {
@@ -54,6 +68,12 @@ func signToken(t *testing.T, o tokenOpts) string {
 	s, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(key)
 	require.NoError(t, err)
 	return s
+}
+
+// operatorToken — токен оператора шарда: права в claim, ограничены его shard_id.
+func operatorToken(t *testing.T, shard string) string {
+	t.Helper()
+	return signToken(t, tokenOpts{Subject: "e2e-operator-" + shard, Permissions: shardPermissions(shard)})
 }
 
 // shardPermissions — права контроллера шарда: всё в пределах своего shard_id (в claim, без БД).

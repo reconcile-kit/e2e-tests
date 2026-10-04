@@ -1,4 +1,4 @@
--- Права из БД для state-manager-auth (БД e2e_auth, применяется scripts/e2e.sh после миграций).
+-- Права из БД для фазы auth (применяется scripts/e2e.sh после миграций state-manager).
 
 -- Тестовый клиент (sub=e2e-client): всё над виджетами в namespace default, в любом шарде.
 INSERT INTO auth_roles (name) VALUES ('e2e-widgets-admin');

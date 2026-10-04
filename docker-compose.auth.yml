@@ -1,0 +1,13 @@
+# Override для фазы auth (scripts/e2e.sh): state-manager с включённой авторизацией.
+# Ключ «внешнего IdP» генерирует скрипт в build/auth, права из БД — fixtures/auth/seed.sql.
+services:
+  state-manager:
+    environment:
+      AUTH_ENABLED: "true"
+      AUTH_JWT_PUBLIC_KEY_FILE: /keys/public.pem
+      AUTH_ISSUER: https://e2e-idp.reconcile-kit.dev
+      AUTH_AUDIENCE: state-manager
+      AUTH_ALGORITHMS: RS256
+      AUTH_PERMISSIONS_SOURCE: auto
+    volumes:
+      - ./build/auth/public.pem:/keys/public.pem:ro
