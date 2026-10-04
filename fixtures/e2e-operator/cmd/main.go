@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,7 +25,11 @@ func main() {
 	l := logger.New(int32(cfg.LogLevel))
 	l.Infof("e2e-fixture-operator shard=%s storage=%s redis=%s", cfg.ShardID, cfg.StorageURL, cfg.InformerURL)
 
-	mgr := rtm.New(cfg.ShardID, cfg.InformerURL, cfg.StorageURL, rtm.WithLogger(l))
+	opts := []rtm.Option{rtm.WithLogger(l)}
+	if cfg.Token != "" {
+		opts = append(opts, rtm.WithHTTPClient(&http.Client{Transport: bearerTransport{token: cfg.Token}}))
+	}
+	mgr := rtm.New(cfg.ShardID, cfg.InformerURL, cfg.StorageURL, opts...)
 
 	if err := rtm.SetController[*api.E2EWidget](mgr, controllers.NewWidgetReconciler[*api.E2EWidget](l)); err != nil {
 		log.Fatal(err)
@@ -43,4 +48,13 @@ func main() {
 	l.Infof("shutdown signal, stopping manager")
 	mgr.Stop()
 	l.Infof("stopped")
+}
+
+// bearerTransport добавляет JWT ко всем запросам в state-manager (make e2e-auth).
+type bearerTransport struct{ token string }
+
+func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set("Authorization", "Bearer "+b.token)
+	return http.DefaultTransport.RoundTrip(r)
 }

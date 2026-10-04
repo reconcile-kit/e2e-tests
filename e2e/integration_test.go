@@ -1,5 +1,8 @@
 // Package e2e — интеграционные тесты полного контура: state-manager (Postgres + Redis),
 // Redis Streams и тестовый оператор (fixtures/e2e-operator). Запуск: make e2e или ./scripts/e2e.sh.
+//
+// Тесты этого файла не зависят от режима state-manager: scripts/e2e.sh прогоняет их и без
+// авторизации, и с авторизацией (E2E_AUTH=1) — тогда клиент и оператор ходят с JWT.
 package e2e
 
 import (
@@ -32,6 +35,10 @@ func setupE2E(t *testing.T) (shard string, cl *SMClient) {
 	var err error
 	cl, err = NewSMClient(base)
 	require.NoError(t, err)
+	if authEnabled() {
+		// Права клиента — из БД по sub (fixtures/auth/seed.sql).
+		cl = cl.WithToken(signToken(t, tokenOpts{Subject: authClientSubject}))
+	}
 	return shard, cl
 }
 
@@ -50,6 +57,10 @@ func startTestOperator(t *testing.T, shard string, logLevel string) {
 	)
 	if logLevel != "" {
 		env = append(env, "E2E_LOG_LEVEL="+logLevel)
+	}
+	if authEnabled() {
+		// Оператор получает права в claim токена, ограниченные своим шардом.
+		env = append(env, "E2E_OPERATOR_TOKEN="+operatorToken(t, shard))
 	}
 	cmd.Env = env
 	cmd.Stdout = os.Stdout

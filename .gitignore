@@ -4,3 +4,4 @@
 /versions.env
 *.test
 coverage.out
+/build/auth/
