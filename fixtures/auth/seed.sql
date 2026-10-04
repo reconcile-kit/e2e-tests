@@ -17,3 +17,24 @@ SELECT id, 'group', 'e2e-readers' FROM auth_roles WHERE name = 'e2e-widgets-read
 -- Отключённый binding: e2e-disabled не должен получить права.
 INSERT INTO auth_role_bindings (role_id, subject_kind, subject_value, disabled)
 SELECT id, 'subject', 'e2e-disabled', true FROM auth_roles WHERE name = 'e2e-widgets-admin';
+
+-- Второй контроллер и тип только с RemoteClient (fixtures/e2e-operator): тестовому клиенту
+-- нужны те же права, что и на виджеты.
+INSERT INTO auth_role_rules (role_id, verbs, resource_group, namespace, kind)
+SELECT id, '{*}', 'e2e.reconcile-kit.dev', 'default', k
+FROM auth_roles, unnest(ARRAY['e2e-gadget', 'e2e-remote-note']) AS k
+WHERE name = 'e2e-widgets-admin';
+
+-- Группа e2e-creators: только создание виджетов (проверка сложения прав нескольких групп).
+INSERT INTO auth_roles (name) VALUES ('e2e-widgets-creator');
+INSERT INTO auth_role_rules (role_id, verbs, resource_group, kind)
+SELECT id, '{create}', 'e2e.reconcile-kit.dev', 'e2e-widget' FROM auth_roles WHERE name = 'e2e-widgets-creator';
+INSERT INTO auth_role_bindings (role_id, subject_kind, subject_value)
+SELECT id, 'group', 'e2e-creators' FROM auth_roles WHERE name = 'e2e-widgets-creator';
+
+-- e2e-shard-client: всё над виджетами, но только в шарде e2e-db-shard (правило БД с shard_id).
+INSERT INTO auth_roles (name) VALUES ('e2e-db-shard-admin');
+INSERT INTO auth_role_rules (role_id, verbs, resource_group, namespace, kind, shard_id)
+SELECT id, '{*}', 'e2e.reconcile-kit.dev', 'default', 'e2e-widget', 'e2e-db-shard' FROM auth_roles WHERE name = 'e2e-db-shard-admin';
+INSERT INTO auth_role_bindings (role_id, subject_kind, subject_value)
+SELECT id, 'subject', 'e2e-shard-client' FROM auth_roles WHERE name = 'e2e-db-shard-admin';

@@ -65,6 +65,35 @@ make e2e
 (в т.ч. запрет переноса ресурса в чужой шард), покрытие фильтра list, права из БД по `sub` и группе,
 выключенный binding и приоритет claim над БД.
 
+## Состав тестов
+
+| Файл | Что проверяет |
+|------|---------------|
+| `e2e/integration_test.go` | базовые сценарии: создание → Ready, Requeue, удаление с финализатором, List по лейблам в reconcile |
+| `e2e/operator_test.go` | полный контур с оператором: события Redis, обновление spec и конфликт версий, ошибки/паники/RequeueAfter, рестарт, шардирование, несколько kind, дочерние ресурсы, RemoteClient, параллельные воркеры, graceful shutdown, ошибки конфигурации |
+| `e2e/contract_test.go` | HTTP-контракт state-manager: коды ответов, версии, лейблы, удаление, list и label selector |
+| `e2e/events_test.go` | события в Redis Streams и их обработка информером |
+| `e2e/chaos_test.go` | рестарт state-manager и Redis под работающим оператором (только фаза `no-auth`) |
+| `e2e/auth_test.go`, `e2e/auth_more_test.go` | авторизация (только фаза `auth`) |
+| `fixtures/e2e-operator/**/*_test.go` | unit-тесты фикстуры и поведения `api` (без стенда) |
+
+Тесты, которым нужен оператор, работают каждый в своём шарде со своим процессом оператора и идут параллельно.
+Поведение reconcile задаётся полями `spec` виджета (`failTimes`, `panicTimes`, `requeueAfterMs`, `sleepMs`,
+`children`, `setLabels`, `remoteNotes`, `marker`, см. `fixtures/e2e-operator/api/widget_types.go`).
+
+Переменные `scripts/e2e.sh`:
+
+- `E2E_PHASES` — какие фазы запускать (`no-auth`, `auth`; по умолчанию обе);
+- `E2E_RUN` — фильтр `go test -run`;
+- `E2E_OPERATOR_LOGS=1` — печатать логи операторов сразу (по умолчанию — только у упавших тестов);
+- `E2E_KNOWN_BUGS=1` — запустить тесты известных багов библиотек. По умолчанию они пропускаются
+  (`known bug: ...` в выводе), в этом режиме падают, пока баг не исправлен.
+
+```bash
+E2E_PHASES=no-auth E2E_RUN='TestE2E_' make e2e
+E2E_KNOWN_BUGS=1 make e2e
+```
+
 ## Требования
 
-Go (см. `go.work`), Docker и Docker Compose.
+Go (см. `go.work`), Docker и Docker Compose, `openssl`.

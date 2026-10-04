@@ -4,6 +4,12 @@
 #   2. auth    — state-manager с AUTH_ENABLED=true (docker-compose.auth.yml): базовые тесты
 #                с JWT + тесты авторизации (E2E_AUTH=1).
 # Падение фазы останавливает прогон.
+#
+# Переменные:
+#   E2E_PHASES      — какие фазы запускать (по умолчанию "no-auth auth");
+#   E2E_RUN         — фильтр go test -run;
+#   E2E_KNOWN_BUGS  — 1: запускать тесты известных багов библиотек (по умолчанию пропускаются);
+#   E2E_OPERATOR_LOGS — 1: печатать логи операторов сразу (иначе только у упавших тестов).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
@@ -33,10 +39,29 @@ go -C "${ROOT}/fixtures/e2e-operator" mod tidy
 go -C "${ROOT}/fixtures/e2e-operator" build -o "${ROOT}/bin/e2e-operator" ./cmd
 go -C "${ROOT}/e2e" mod tidy
 
+# В режиме E2E_KNOWN_BUGS тесты известных багов заведомо падают: не прерываем прогон,
+# а возвращаем ошибку в конце.
+FAILED=0
+check() {
+	if "$@"; then
+		return 0
+	fi
+	if [[ -n "${E2E_KNOWN_BUGS:-}" ]]; then
+		FAILED=1
+		return 0
+	fi
+	exit 1
+}
+
+# Unit-тесты фикстуры оператора (без стенда).
+check go -C "${ROOT}/fixtures/e2e-operator" test -count=1 ./...
+
 export E2E_STORAGE_URL="http://127.0.0.1:58080"
 export E2E_INFORMER_URL="127.0.0.1:56379"
 export E2E_SHARD_ID="e2e-shard-1"
 export E2E_OPERATOR_BIN="${ROOT}/bin/e2e-operator"
+# Для тестов, которые управляют стендом (рестарт контейнеров, psql).
+export E2E_ROOT="${ROOT}"
 
 # Ждём HTTP state-manager
 wait_state_manager() {
@@ -59,13 +84,40 @@ start_stand() {
 }
 
 run_tests() {
-	go -C "${ROOT}/e2e" test -count=1 -v -timeout=15m ./...
+	# Файлы compose текущей фазы — тестам, которые сами вызывают docker compose.
+	local files=()
+	local i
+	for ((i = 2; i < ${#COMPOSE[@]}; i += 2)); do
+		files+=("${COMPOSE[i+1]}")
+	done
+	E2E_COMPOSE_FILES="$(IFS=:; echo "${files[*]}")" \
+		go -C "${ROOT}/e2e" test -count=1 -v -timeout=20m ${E2E_RUN:+-run "${E2E_RUN}"} ./...
 }
 
-echo "=== Phase 1: no-auth"
-start_stand
-run_tests
-cleanup
+PHASES="${E2E_PHASES:-no-auth auth}"
+phase_enabled() {
+	[[ " ${PHASES} " == *" $1 "* ]]
+}
+
+if phase_enabled no-auth; then
+	echo "=== Phase 1: no-auth"
+	start_stand
+	check run_tests
+	cleanup
+fi
+
+finish() {
+	if [[ "${FAILED}" -ne 0 ]]; then
+		echo "e2e: FAILED (known bugs mode)"
+		exit 1
+	fi
+	echo "e2e: OK"
+	exit 0
+}
+
+if ! phase_enabled auth; then
+	finish
+fi
 
 echo "=== Phase 2: auth"
 COMPOSE+=(-f docker-compose.auth.yml)
@@ -76,6 +128,6 @@ E2E_AUTH=1 \
 	E2E_AUTH_PRIVATE_KEY="${ROOT}/build/auth/private.pem" \
 	E2E_AUTH_ISSUER="https://e2e-idp.reconcile-kit.dev" \
 	E2E_AUTH_AUDIENCE="state-manager" \
-	run_tests
+	check run_tests
 
-echo "e2e: OK"
+finish

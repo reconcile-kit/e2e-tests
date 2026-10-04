@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 // Config из переменных окружения (удобно для e2e-подпроцесса).
@@ -13,6 +14,10 @@ type Config struct {
 	LogLevel    int
 	// Token — JWT для state-manager с включённой авторизацией; пустой — без авторизации.
 	Token string
+	// Workers — число параллельных reconcile контроллера виджетов (0 — по умолчанию библиотеки).
+	Workers int
+	// ReadyFile — если задан, создаётся после mgr.Run: информер подписан, Init выполнен.
+	ReadyFile string
 }
 
 func LoadConfig() (*Config, error) {
@@ -22,6 +27,7 @@ func LoadConfig() (*Config, error) {
 		InformerURL: os.Getenv("E2E_INFORMER_URL"),
 		LogLevel:    4,
 		Token:       os.Getenv("E2E_OPERATOR_TOKEN"),
+		ReadyFile:   os.Getenv("E2E_READY_FILE"),
 	}
 	if cfg.ShardID == "" {
 		cfg.ShardID = "e2e-shard-1"
@@ -38,6 +44,13 @@ func LoadConfig() (*Config, error) {
 		if lvl > 0 {
 			cfg.LogLevel = lvl
 		}
+	}
+	if v := os.Getenv("E2E_WORKERS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("invalid E2E_WORKERS %q", v)
+		}
+		cfg.Workers = n
 	}
 	return &cfg, nil
 }
