@@ -11,6 +11,8 @@ type Config struct {
 	StorageURL  string
 	InformerURL string
 	LogLevel    int
+	// Token — JWT для state-manager с включённой авторизацией; пустой — без авторизации.
+	Token string
 }
 
 func LoadConfig() (*Config, error) {
@@ -19,6 +21,7 @@ func LoadConfig() (*Config, error) {
 		StorageURL:  os.Getenv("E2E_STORAGE_URL"),
 		InformerURL: os.Getenv("E2E_INFORMER_URL"),
 		LogLevel:    4,
+		Token:       os.Getenv("E2E_OPERATOR_TOKEN"),
 	}
 	if cfg.ShardID == "" {
 		cfg.ShardID = "e2e-shard-1"

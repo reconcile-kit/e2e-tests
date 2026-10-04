@@ -20,6 +20,7 @@ const (
 type SMClient struct {
 	base   *url.URL
 	client *http.Client
+	token  string
 }
 
 func NewSMClient(baseURL string) (*SMClient, error) {
@@ -33,6 +34,46 @@ func NewSMClient(baseURL string) (*SMClient, error) {
 			Timeout: 30 * time.Second,
 		},
 	}, nil
+}
+
+// WithToken возвращает копию клиента, которая отправляет Authorization: Bearer <token>.
+func (c *SMClient) WithToken(token string) *SMClient {
+	cp := *c
+	cp.token = token
+	return &cp
+}
+
+// Do выполняет произвольный запрос к state-manager и возвращает код и тело ответа.
+func (c *SMClient) Do(method, path string, body any) (int, []byte, error) {
+	var r io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return 0, nil, err
+		}
+		r = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, c.base.String()+path, r)
+	if err != nil {
+		return 0, nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := c.do(req)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer res.Body.Close()
+	b, err := io.ReadAll(res.Body)
+	return res.StatusCode, b, err
+}
+
+func (c *SMClient) do(req *http.Request) (*http.Response, error) {
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	return c.client.Do(req)
 }
 
 func (c *SMClient) resourcePath(name string) string {
@@ -53,12 +94,12 @@ func (c *SMClient) createPath() string {
 }
 
 type createBody struct {
-	ShardID      string            `json:"shard_id"`
-	Name         string            `json:"name"`
-	Spec         json.RawMessage   `json:"spec,omitempty"`
-	Annotations  map[string]string `json:"annotations,omitempty"`
-	Finalizers   []string          `json:"finalizers,omitempty"`
-	Labels       map[string]string `json:"labels,omitempty"`
+	ShardID     string            `json:"shard_id"`
+	Name        string            `json:"name"`
+	Spec        json.RawMessage   `json:"spec,omitempty"`
+	Annotations map[string]string `json:"annotations,omitempty"`
+	Finalizers  []string          `json:"finalizers,omitempty"`
+	Labels      map[string]string `json:"labels,omitempty"`
 }
 
 type ResourceDTO struct {
@@ -73,7 +114,7 @@ type ResourceDTO struct {
 	Status            json.RawMessage   `json:"status"`
 	Labels            map[string]string `json:"labels"`
 	Finalizers        []string          `json:"finalizers"`
-	DeletionTimestamp *time.Time       `json:"deletion_timestamp"`
+	DeletionTimestamp *time.Time        `json:"deletion_timestamp"`
 }
 
 func (c *SMClient) CreateResource(shardID, name string, spec json.RawMessage, labels map[string]string) (*ResourceDTO, error) {
@@ -89,7 +130,7 @@ func (c *SMClient) CreateResource(shardID, name string, spec json.RawMessage, la
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	res, err := c.client.Do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +151,7 @@ func (c *SMClient) GetResource(name string) (*ResourceDTO, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	res, err := c.client.Do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -134,7 +175,7 @@ func (c *SMClient) DeleteResource(name string) error {
 	if err != nil {
 		return err
 	}
-	res, err := c.client.Do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -162,7 +203,7 @@ func (c *SMClient) ListResources(shardID, labelSelector string) ([]ResourceDTO, 
 	if err != nil {
 		return nil, err
 	}
-	res, err := c.client.Do(req)
+	res, err := c.do(req)
 	if err != nil {
 		return nil, err
 	}

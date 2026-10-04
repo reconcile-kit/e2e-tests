@@ -5,6 +5,8 @@ services:
       POSTGRES_USER: e2e
       POSTGRES_PASSWORD: e2e
       POSTGRES_DB: e2e
+    volumes:
+      - ./fixtures/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U e2e -d e2e"]
       interval: 2s
@@ -39,3 +41,30 @@ services:
         condition: service_healthy
     ports:
       - "58080:8080"
+
+  # Тот же state-manager с включённой авторизацией: своя БД, тот же Redis (тесты используют свой шард).
+  # Ключ генерирует scripts/e2e.sh в build/auth, права из БД — fixtures/auth/seed.sql.
+  state-manager-auth:
+    build:
+      context: ./build/deps/state-manager
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://e2e:e2e@postgres:5432/e2e_auth?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      REDIS_SKIP_TLS: "true"
+      SERVER_PORT: "8080"
+      AUTH_ENABLED: "true"
+      AUTH_JWT_PUBLIC_KEY_FILE: /keys/public.pem
+      AUTH_ISSUER: https://e2e-idp.reconcile-kit.dev
+      AUTH_AUDIENCE: state-manager
+      AUTH_ALGORITHMS: RS256
+      AUTH_PERMISSIONS_SOURCE: auto
+    volumes:
+      - ./build/auth/public.pem:/keys/public.pem:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "58081:8080"
