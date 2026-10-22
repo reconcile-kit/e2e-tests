@@ -3,9 +3,10 @@ module github.com/reconcile-kit/e2e-fixture-operator
 go 1.24.2
 
 require (
-	github.com/reconcile-kit/api v0.0.16
-	github.com/reconcile-kit/controlloop v0.0.15
+	github.com/reconcile-kit/api v0.0.18-0.20261022151914-cf86c1a2d712
+	github.com/reconcile-kit/controlloop v0.0.20-0.20261022152310-799ad7cb4d41
 	github.com/reconcile-kit/runtime-manager v0.0.15
+	github.com/reconcile-kit/state-manager-provider v0.0.12-0.20261008144353-11412443cfa6
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
 )
@@ -22,7 +23,6 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/reconcile-kit/redis-informer-provider v0.0.4 // indirect
-	github.com/reconcile-kit/state-manager-provider v0.0.9 // indirect
 	github.com/redis/go-redis/v9 v9.8.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.37.0 // indirect

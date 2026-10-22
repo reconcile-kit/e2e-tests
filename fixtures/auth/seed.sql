@@ -22,7 +22,7 @@ SELECT id, 'subject', 'e2e-disabled', true FROM auth_roles WHERE name = 'e2e-wid
 -- нужны те же права, что и на виджеты.
 INSERT INTO auth_role_rules (role_id, verbs, resource_group, namespace, kind)
 SELECT id, '{*}', 'e2e.reconcile-kit.dev', 'default', k
-FROM auth_roles, unnest(ARRAY['e2e-gadget', 'e2e-remote-note']) AS k
+FROM auth_roles, unnest(ARRAY['e2e-gadget', 'e2e-remote-note', 'e2e-config', 'e2e-consumer']) AS k
 WHERE name = 'e2e-widgets-admin';
 
 -- Группа e2e-creators: только создание виджетов (проверка сложения прав нескольких групп).

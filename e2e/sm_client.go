@@ -22,9 +22,11 @@ const (
 )
 
 type SMClient struct {
-	base   *url.URL
-	client *http.Client
-	token  string
+	base      *url.URL
+	client    *http.Client
+	token     string
+	group     string
+	namespace string
 }
 
 func NewSMClient(baseURL string) (*SMClient, error) {
@@ -33,7 +35,9 @@ func NewSMClient(baseURL string) (*SMClient, error) {
 		return nil, err
 	}
 	return &SMClient{
-		base: u,
+		base:      u,
+		group:     widgetGroup,
+		namespace: testNamespace,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -44,6 +48,13 @@ func NewSMClient(baseURL string) (*SMClient, error) {
 func (c *SMClient) WithToken(token string) *SMClient {
 	cp := *c
 	cp.token = token
+	return &cp
+}
+
+// WithScope selects a group/namespace without mutating a shared test client.
+func (c *SMClient) WithScope(group, namespace string) *SMClient {
+	cp := *c
+	cp.group, cp.namespace = group, namespace
 	return &cp
 }
 
@@ -103,8 +114,8 @@ func (c *SMClient) kindResourcePath(kind, name string) string {
 
 func (c *SMClient) kindCreatePath(kind string) string {
 	return fmt.Sprintf("/api/v1/groups/%s/namespaces/%s/kinds/%s/resources",
-		url.PathEscape(widgetGroup),
-		url.PathEscape(testNamespace),
+		url.PathEscape(c.group),
+		url.PathEscape(c.namespace),
 		url.PathEscape(kind),
 	)
 }
@@ -207,9 +218,9 @@ func (c *SMClient) DeleteResource(name string) error {
 // ListResources GET /api/v1/resources с фильтрами (в т.ч. label_selector в формате api).
 func (c *SMClient) ListResources(shardID, labelSelector string) ([]ResourceDTO, error) {
 	q := url.Values{}
-	q.Set("resource_group", widgetGroup)
+	q.Set("resource_group", c.group)
 	q.Set("kind", widgetKind)
-	q.Set("namespace", testNamespace)
+	q.Set("namespace", c.namespace)
 	q.Set("shard_id", shardID)
 	q.Set("limit", "500")
 	if labelSelector != "" {
@@ -350,9 +361,9 @@ func (c *SMClient) putResource(path string, body any) (*ResourceDTO, int, error)
 // должен целиком покрываться правилом, а правило тестового клиента ограничено ими.
 func (c *SMClient) List(filters map[string]string) ([]ResourceDTO, error) {
 	q := url.Values{}
-	q.Set("resource_group", widgetGroup)
+	q.Set("resource_group", c.group)
 	q.Set("kind", widgetKind)
-	q.Set("namespace", testNamespace)
+	q.Set("namespace", c.namespace)
 	for k, v := range filters {
 		q.Set(k, v)
 	}

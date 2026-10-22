@@ -26,9 +26,11 @@ func main() {
 	l.Infof("e2e-fixture-operator shard=%s storage=%s redis=%s", cfg.ShardID, cfg.StorageURL, cfg.InformerURL)
 
 	opts := []rtm.Option{rtm.WithLogger(l)}
+	httpClient := &http.Client{}
 	if cfg.Token != "" {
-		opts = append(opts, rtm.WithHTTPClient(&http.Client{Transport: bearerTransport{token: cfg.Token}}))
+		httpClient.Transport = bearerTransport{token: cfg.Token}
 	}
+	opts = append(opts, rtm.WithHTTPClient(httpClient))
 	mgr := rtm.New(cfg.ShardID, cfg.InformerURL, cfg.StorageURL, opts...)
 
 	var widgetOpts []rtm.ControllerOption
@@ -42,6 +44,9 @@ func main() {
 		log.Fatal(err)
 	}
 	if err := rtm.SetRemoteClient[*api.E2ERemoteNote](mgr); err != nil {
+		log.Fatal(err)
+	}
+	if err := registerCommonControllers(mgr, cfg.StorageURL, httpClient); err != nil {
 		log.Fatal(err)
 	}
 
