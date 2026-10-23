@@ -25,13 +25,8 @@ func TestDeepCopy_Scalars(t *testing.T) {
 // DeepCopy должен разрывать связь по слайсам и мапам: memory storage controlloop отдаёт
 // reconcile копию через DeepCopy и рассчитывает, что её изменения не трогают хранимый объект.
 //
-// Известный баг reconcile-kit/api: resource.DeepCopyStruct для именованной структуры из пакета
-// (E2EWidget, resource.Resource, ...) возвращает значение как есть — получается поверхностная
-// копия, слайсы Finalizers/Conditions и мапа Labels общие с оригиналом.
+// Regression for the named-struct shallow-copy bug fixed in api@cf86c1a.
 func TestDeepCopy_SlicesAndMapsAreIndependent(t *testing.T) {
-	if os.Getenv("E2E_KNOWN_BUGS") == "" {
-		t.Skip("known bug: resource.DeepCopyStruct makes a shallow copy of named structs (set E2E_KNOWN_BUGS=1)")
-	}
 	src := &E2EWidget{
 		Resource: resource.Resource{
 			Finalizers: []string{"f1"},

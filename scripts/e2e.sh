@@ -91,7 +91,7 @@ run_tests() {
 		files+=("${COMPOSE[i+1]}")
 	done
 	E2E_COMPOSE_FILES="$(IFS=:; echo "${files[*]}")" \
-		go -C "${ROOT}/e2e" test -count=1 -v -timeout=20m ${E2E_RUN:+-run "${E2E_RUN}"} ./...
+		go -C "${ROOT}/e2e" test -tags=integration -count=1 -v -timeout=20m ${E2E_RUN:+-run "${E2E_RUN}"} ./...
 }
 
 PHASES="${E2E_PHASES:-no-auth auth}"

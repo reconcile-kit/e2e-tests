@@ -74,6 +74,9 @@ make e2e
 | `e2e/contract_test.go` | HTTP-контракт state-manager: коды ответов, версии, лейблы, удаление, list и label selector |
 | `e2e/events_test.go` | события в Redis Streams и их обработка информером |
 | `e2e/chaos_test.go` | рестарт state-manager и Redis под работающим оператором (только фаза `no-auth`) |
+| `e2e/common_watchedby_test.go` | `E2EConfig → E2EConsumer`: оба notifier, name/labels, AND-фильтры, namespace/kind/shard, 501 потребитель, повторные уведомления, обработка после запуска потребителя |
+| `e2e/common_client_test.go`, `e2e/common_errors_test.go` | unstructured CRUD, JSON и metadata, версии и события, ошибки авторизации и восстановление после рестарта, регрессия исчезнувшей цели |
+| `fixtures/e2e-operator/common/*_test.go` | контракты всех пакетов `controlloop/common`: пагинация, селекторы, отмена, ошибки, частичные уведомления, metadata и DeepCopy |
 | `e2e/auth_test.go`, `e2e/auth_more_test.go` | авторизация (только фаза `auth`) |
 | `fixtures/e2e-operator/**/*_test.go` | unit-тесты фикстуры и поведения `api` (без стенда) |
 
@@ -97,3 +100,122 @@ E2E_KNOWN_BUGS=1 make e2e
 ## Требования
 
 Go (см. `go.work`), Docker и Docker Compose, `openssl`.
+
+## Тестирование controlloop/common
+
+Базовые версии для этого покрытия:
+
+- api: `cf86c1a2d712aabb539a53fb4c335f08776fbee8`;
+- controlloop: `799ad7cb4d41c9b581e209fb07ea034de7913a79`.
+
+Они также указаны в `go.mod` тестов и фикстуры. При запуске через `go.work` фактические
+исходники выбирает `prepare-deps.sh`: для воспроизводимого прогона задайте SHA явно.
+Provider должен поддерживать `ListOpts.Limit/Offset`; текущий `main` поддерживает их.
+
+```bash
+API_REF=cf86c1a2d712aabb539a53fb4c335f08776fbee8 \
+CONTROLLOOP_REF=799ad7cb4d41c9b581e209fb07ea034de7913a79 \
+E2E_RUN=TestE2E_Common make e2e
+```
+
+Новые интеграционные тесты имеют build tag `integration`. `make e2e` уже передаёт
+`-tags=integration`, поэтому они входят и в полный прогон, и в CI controlloop.
+Для ручного запуска против подготовленного стенда нужен тот же tag и переменные
+`E2E_*`, которые устанавливает `scripts/e2e.sh`.
+
+Контрактные тесты не требуют Docker. После `make prepare-deps`:
+
+```bash
+go -C fixtures/e2e-operator test -race -count=1 \
+  -coverpkg=github.com/reconcile-kit/controlloop/common/... ./common
+```
+
+### Ресурсы и цепочка уведомления
+
+`E2EConfig` публикует `spec.value` в `status.resolvedValue` вместе с
+`status.resolvedVersion`, затем вызывает notifier. Только после успешного уведомления
+он отмечает свою версию обработанной. При ошибке сохраняются `DependentsNotified=False`
+с reason `NOTIFY_FAILED` и pending-версия, доступная для повторной попытки после рестарта.
+
+`E2EConsumer` читает результат конфигурации и сохраняет `observedValue` и
+`observedConfigVersion`. Уведомление не меняет его spec, но повышает `version` через
+обычный `Update`, создаёт событие Redis и вызывает повторный reconcile. Успех notifier
+не означает, что потребитель уже обработал событие: это проверяется отдельно.
+
+Пример объектов (Group/Kind/Namespace передаются в HTTP path при создании):
+
+```yaml
+resource_group: e2e.reconcile-kit.dev
+kind: e2e-config
+namespace: default
+name: config-a
+shard_id: source-shard
+spec:
+  value: v1
+  notify:
+    mode: structured
+    targetShardID: consumer-shard
+    labelSelector: "config in (config-a)"
+---
+resource_group: e2e.reconcile-kit.dev
+kind: e2e-consumer
+namespace: default
+name: consumer-a
+shard_id: consumer-shard
+labels:
+  config: config-a
+spec:
+  configName: config-a
+  enabled: true
+  paused: false
+```
+
+Для unstructured-сценария используется `mode: unstructured`. Для выбора по имени
+вместо `labelSelector` задаётся `name: consumer-a`. В обоих режимах дополнительно
+применяются два локальных фильтра: `enabled` и `!paused`. Namespace берётся у Config,
+шард — из `targetShardID`. В auth-фазе оператор источника получает права get/list/update
+на потребителей целевого шарда, оператор потребителя — get на конфигурации источника.
+
+Успешный сценарий не использует периодический requeue. Тесты сначала дожидаются
+обработки v1, затем меняют только Config на v2/v3 и ожидают новое наблюдение Consumer.
+Оба ресурса удаляют только свой finalizer; зависимость не означает владение потребителем.
+
+### Контракты и ошибки
+
+- `ListAll`: пустая/короткая страница, ровно 500, 501 и 1000 элементов, сохранение
+  фильтров, переопределение входных limit/offset, ошибки и отмена без частичного результата.
+- Notifier: чтение всех страниц до обновлений, пустая выборка, AND-фильтры,
+  пропуск `NotFound`, остановка на другой ошибке без отката выполненных обновлений,
+  возможность повторного уведомления при retry. Порядок обхода map не фиксируется.
+- Unstructured: Create/Get/List/Update/UpdateStatus/Delete, выбор Group/Kind при
+  конструировании, независимость клиентов, raw JSON и большие целые числа,
+  изоляция DeepCopy для spec/status/labels/annotations/finalizers/metadata.
+- Реальный state-manager: `Update` при неизменном spec создаёт событие,
+  `UpdateStatus` не создаёт; конфликт версий сохраняется как `resource.ConflictError`.
+
+Тест `TestDeepCopy_SlicesAndMapsAreIndependent` теперь выполняется по умолчанию:
+на указанной версии api прежняя ошибка shallow copy исправлена.
+
+### Известный дефект: цель удалена между List и Update
+
+`TestE2E_CommonWatchedByDeletedTarget` расширяет существующую регрессию
+`TestContract_MissingResourceIs404`: state-manager возвращает HTTP 500 при обновлении
+уже удалённого ресурса. Provider превращает это в серверную ошибку, поэтому оба notifier
+не получают `resource.NotFoundError` и не могут пропустить исчезнувшую цель.
+
+Тест детерминированно удаляет реальную цель внутри локального predicate селектора:
+после завершения List, перед Update. Ожидаемое поведение — успешное уведомление
+с пропуском цели. До исправления state-manager тест падает и включается существующим
+флагом известных багов:
+
+```bash
+API_REF=cf86c1a2d712aabb539a53fb4c335f08776fbee8 \
+CONTROLLOOP_REF=799ad7cb4d41c9b581e209fb07ea034de7913a79 \
+E2E_KNOWN_BUGS=1 E2E_RUN=TestE2E_CommonWatchedByDeletedTarget make e2e
+```
+
+Флаг `E2E_KNOWN_BUGS` также включает прежние регрессии unit-тестов фикстуры;
+`E2E_RUN` фильтрует только интеграционный пакет.
+
+Обычные контрактные тесты notifier проверяют корректный пропуск sentinel `NotFound`
+без этого флага. Исправления соседних библиотек в этот репозиторий не включены.

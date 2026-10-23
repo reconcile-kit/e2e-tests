@@ -5,3 +5,4 @@
 *.test
 coverage.out
 /build/auth/
+/build/results/
